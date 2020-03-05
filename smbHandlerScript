@@ -1,0 +1,73 @@
+#!/bin/bash
+# This script runs mount commands only on a specific network, and unmounts the shares when the network is disconnected.
+# This is a simple script meant for my personal use- you need to enter your own data, and fully understand the script!
+#
+# TO RUN AUTOMATICALLY:
+# On Ubuntu 19.10, place copies of this script in the folling folders:
+# to run after network connection: /etc/network/if-up.d/ 
+# to run after network is disconnected: /etc/network/if-post-down.d/ and/or /etc/network/if-down.d/
+# Note: They CANNOT have a .sh extention, and must be marked as executable
+
+# Options:
+LOG_FILE=/tmp/smbHandlerScript.log
+STATE_CHANGE=mount # Choose "mount" or "dismount". Mount on network connection, dismount on leaving network
+RUN_ON_ETHERNET=no # NOT IMPLEMENTED YET
+SSID=your_SSID # Enter the SSID that this script will attempt to mount shares on
+
+Connected_SSID="$(iwgetid -r)"
+
+main ()
+{
+  echo "Connected_SSID = $Connected_SSID" | write_log
+  echo "Performing action: = $STATE_CHANGE" | write_log
+  if [ $STATE_CHANGE = "mount" ]; then
+    check_SSID;
+  elif [ $STATE_CHANGE=dismount ]; then
+    dismount_shares;
+  else
+    echo "smbHandlerScript STATE_CHANGE is misconfigured" | write_log
+  fi
+}
+
+check_SSID()
+{
+  if [ "$Connected_SSID" = "$SSID" ]; then
+    mount_shares;
+  else
+    echo "smbHandlerScript did not run: connected to $Connected_SSID" | write_log
+  fi
+}
+
+mount_shares()
+{
+  echo "Attempting to run mount commands" | write_log
+  mount -t cifs //192.168.1.6/Music /media/NAS/Music -o credentials=/home/user/.smbcredentials,uid=username,gid=username
+}
+
+dismount_shares()
+{
+  echo "Dismounting" | write_log
+  umount -l /media/NAS/Music # -l option is for lazy unmounting. If the network has disconnected before unmounting, regular umount will just hang and cause issues.
+}
+
+# Log writing function copied from https://linuxadvices.blogspot.com/2013/05/logging-in-bash-nice-subroutine-to-reuse.html
+write_log()
+{
+  while read text
+  do
+      LOGTIME=`date "+%Y-%m-%d %H:%M:%S"`
+      # If log file is not defined, just echo the output
+      if [ "$LOG_FILE" == "" ]; then
+    echo $LOGTIME": $text";
+      else
+        LOG=$LOG_FILE.`date +%Y%m%d`
+    touch $LOG
+        if [ ! -f $LOG ]; then echo "ERROR!! Cannot create log file $LOG. Exiting."; exit 1; fi
+    echo $LOGTIME": $text" | tee -a $LOG;
+      fi
+  done
+}
+
+
+echo "Initiating smbHandlerScript: " | write_log
+main "$@" # Calls the main function so it could be placed above the other functions.
